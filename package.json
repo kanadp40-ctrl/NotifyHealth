@@ -1,15 +1,19 @@
 {
-  "name": "notify-health",
-  "version": "1.0.0",
-  "main": "backend/server.js",
-  "scripts": {
-    "start": "node backend/server.js"
-  },
-  "dependencies": {
-    "bcryptjs": "^3.0.2",
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "mongodb": "^6.20.0"
-  }
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/Backend/server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/Public/index.html"
+    }
+  ]
 }
