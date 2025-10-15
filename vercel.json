@@ -3,11 +3,11 @@
   "builds": [
     {
       "src": "Backend/server.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "Public/index.html",
-      "use": "@vercel/static"
+      "use": "@vercel/node",
+      "config": {
+        "installCommand": "echo 'Dependencies installed in root. Skipping function install.'",
+        "zeroConfig": false
+      }
     }
   ],
   "rewrites": [
@@ -21,4 +21,3 @@
     }
   ]
 }
-
