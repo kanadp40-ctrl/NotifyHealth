@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOTIFY HEALTH | Live Medical Camp Alerts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        
+        :root {
+            --color-primary: #059669; /* Emerald 600 */
+            --color-secondary: #2563eb; /* Blue 600 */
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #f3f4f6;
+        }
+
+        .dynamic-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(5, 150, 105, 0.05), rgba(37, 99, 235, 0.05));
+            opacity: 1;
+            z-index: -1;
+            background-image: radial-gradient(#d1fae5 1px, transparent 1px),
+                              radial-gradient(#bfdbfe 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .auth-card {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .cta-button {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateZ(0);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .cta-button:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* Custom styles for myBookings table and feedback badge */
+        .booking-badge, .feedback-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            border-radius: 0.5rem;
+            color: #10b981; /* Emerald 500 */
+            background-color: #d1fae5; /* Emerald 100 */
+        }
+        .doctor-card {
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+        }
+    </style>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
+        
+        // Your web app's Firebase configuration (PROVIDED BY USER)
+        const firebaseConfig = {
+            apiKey: "AIzaSyCszzYSQlFawPou9WKbcKos4HwXtgabIag",
+            authDomain: "notifyhealth-acf58.firebaseapp.com",
+            projectId: "notifyhealth-acf58",
+            storageBucket: "notifyhealth-acf58.firebasestorage.app",
+            messagingSenderId: "900058286975",
+            appId: "1:900058286975:web:4c8ce1b159c95de972e84a",
+            measurementId: "G-KYM7PGZ6QK"
+        };
+        
+        const app = initializeApp(firebaseConfig);
+        window.auth = getAuth(app); // Attach to window for global access
+        window.GoogleAuthProvider = GoogleAuthProvider;
+        window.signInWithPopup = signInWithPopup;
+        window.signOut = signOut;
+        window.onAuthStateChanged = onAuthStateChanged;
+    </script>
+</head>
+<body class="text-gray-800">
+
+    <div class="dynamic-background"></div>
+
+    <header class="bg-white/80 backdrop-blur-md shadow-md sticky top-0 z-10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <h1 class="text-3xl font-extrabold text-gray-800">
+                <span class="text-emerald-600">NOTIFY</span> <span class="text-blue-600">HEALTH</span>
+            </h1>
+            <nav id="navbar-controls">
+                </nav>
+        </div>
+    </header>
+
+    <main id="main-content" class="flex-grow flex items-center justify-center p-4 sm:p-8">
+        <div id="app-container" class="w-full max-w-7xl">
+            </div>
+    </main>
+    
+    <div id="modal-container"></div>
+
+    <footer class="w-full py-4 text-center text-sm text-gray-500 bg-white/80 backdrop-blur-md mt-auto">
+        &copy; 2025 NOTIFY HEALTH. Data persisted via MongoDB (Node.js API).
+    </footer>
+
+    <script>
+        // --- Configuration & Globals ---
+        const API_BASE_URL = 'http://localhost:3000/api'; // Connects to server.js
+        // FINAL ADMIN CREDENTIALS (Must match server.js)
+        const ADMIN_USERNAME = 'admin@nh.com'; 
+        const ADMIN_PASSWORD = 'SJCHS@123'; 
+        const WHATSAPP_NUMBER = '8625085768';
+        const WHATSAPP_MESSAGE = 'Hii..! I Need More Information';
+
+        // State Management
+        let appState = {
+            view: 'loading', // 'loading', 'login', 'userDashboard', 'adminDashboard'
+            user: null,    // { userId, name, email, role, token }
+            camps: [],     // Array of live medical camp objects
+            myBookings: [], // User's booked slots
+            adminBookings: [], // All bookings (Admin only)
+            allFeedback: [], // NEW: All public feedback
+            modal: {
+                isOpen: false,
+                type: 'add', // 'add', 'edit', or 'confirm'
+                campToEdit: null,
+                confirmAction: null, // Function to call if confirmation is accepted
+                confirmMessage: '',
+                confirmButtonText: ''
+            },
+            message: {
+                text: '',
+                type: '' // 'success' or 'error'
+            }
+        };
+        
+        let campsIntervalId = null; // ID for camp refresh interval
+
+        // --- Utility Functions ---
+
+        /**
+         * Simulates a network request to the backend with error handling and backoff.
+         */
+        async function apiRequest(endpoint, options = {}) {
+            const url = `${API_BASE_URL}${endpoint}`;
+            const maxRetries = 3;
+            let lastError = null;
+            
+            // Add Authorization header if a token exists in state
+            if (appState.user && appState.user.token) {
+                options.headers = { ...options.headers, 'Authorization': `Bearer ${appState.user.token}` };
+            }
+
+            if (options.method === 'POST' || options.method === 'PUT') {
+                 options.headers = { ...options.headers, 'Content-Type': 'application/json' };
+            }
+
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+
+                    if (!response.ok) {
+                        // Handle 401/403 errors explicitly for token issues
+                        if (response.status === 401 || response.status === 403) {
+                            // Only force logout if a protected resource failed due to a bad token.
+                            if (!endpoint.includes('/auth/')) {
+                                handleLogout(); // Force logout on unauthorized access to protected routes
+                            }
+                        }
+                        
+                        const errorData = await response.json().catch(() => ({ message: `API Request failed: ${response.statusText}` }));
+                        throw new Error(errorData.message || `API Request failed with status ${response.status}`);
+                    }
+                    return response.json();
+                } catch (error) {
+                    lastError = error;
+                    if (i < maxRetries - 1) {
+                        const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+            }
+            throw lastError;
+        }
+
+        /**
+         * Renders and displays the current message/alert banner.
+         */
+        function showMessage(text, type = 'info') {
+            // Prevent multiple messages from stacking by managing state first
+            appState.message = { text, type };
+            
+            const appContainer = document.getElementById('app-container');
+            if (!appContainer) return;
+
+            // 1. Remove existing message if present
+            const oldMsg = appContainer.querySelector('[role="alert"]');
+            if (oldMsg) oldMsg.remove();
+
+            // 2. Insert new message at top
+            const messageHTML = renderMessage();
+            if (messageHTML) {
+                appContainer.insertAdjacentHTML('afterbegin', messageHTML);
+
+                // 3. Render Lucide icons for the message
+                const newMsgElement = appContainer.querySelector('[role="alert"]');
+                if (newMsgElement) {
+                    lucide.createIcons({ attr: 'data-lucide', element: newMsgElement });
+                }
+            }
+
+            // 4. Auto-hide after 5 seconds
+            setTimeout(() => {
+                const msg = appContainer.querySelector('[role="alert"]');
+                if (msg) msg.remove();
+                appState.message = { text: '', type: '' };
+            }, 5000);
+        }
+        
+        /**
+         * Converts a numerical rating to star icons.
+         */
+        function renderRatingStars(rating) {
+            const fullStar = '<i data-lucide="Star" class="w-4 h-4 fill-yellow-400 text-yellow-400"></i>';
+            const emptyStar = '<i data-lucide="Star" class="w-4 h-4 text-gray-300"></i>';
+            let stars = '';
+            for (let i = 1; i <= 5; i++) {
+                stars += (i <= rating) ? fullStar : emptyStar;
+            }
+            return stars;
+        }
+
+        // --- Core Application Logic ---
+
+        /**
+         * Handles the Logout action.
+         */
+        async function handleLogout() {
+            try {
+                // Clear any running interval for camp refresh
+                if (campsIntervalId) clearInterval(campsIntervalId);
+                campsIntervalId = null;
+                
+                // If the user was logged in via Firebase, sign them out
+                if (window.auth.currentUser) {
+                    await window.signOut(window.auth);
+                }
+
+                // Reset state
+                appState.user = null;
+                appState.view = 'login';
+                appState.camps = [];
+                appState.myBookings = [];
+                appState.adminBookings = [];
+                appState.allFeedback = [];
+                showMessage('You have been securely logged out.', 'success');
+                renderApp(); // Re-render main view after state change
+            } catch (error) {
+                console.error("Logout Error:", error);
+                showMessage('Error logging out.', 'error');
+            }
+        }
+
+        /**
+         * Refreshes all necessary data for the current user role.
+         */
+        function refreshAllData() {
+            fetchCamps();
+            fetchFeedback(); // Fetch public feedback for all views
+            if (appState.user) {
+                if (appState.user.role === 'admin') {
+                    fetchAllAdminBookings();
+                } else {
+                    fetchMyBookings();
+                }
+            }
+        }
+
+        /**
+         * Starts a polling mechanism to fetch camps periodically.
+         */
+        function startPolling() {
+            if (campsIntervalId) clearInterval(campsIntervalId);
+
+            // Fetch immediately, then set up the interval (e.g., every 10 seconds)
+            refreshAllData(); 
+            campsIntervalId = setInterval(refreshAllData, 10000); 
+        }
+
+        /**
+         * Fetches live medical camp data from the backend. Requires Auth.
+         */
+        async function fetchCamps() {
+            if (!appState.user || !appState.user.token) return; // Must have a token
+
+            try {
+                const data = await apiRequest('/camps', { method: 'GET' });
+                // Ensure camp data is sorted by date for user readability
+                data.sort((a, b) => new Date(a.date) - new Date(b.date));
+                appState.camps = data;
+                renderApp();
+            } catch (error) {
+                console.error('Failed to fetch camps:', error);
+                if (appState.view !== 'login') {
+                    // Only show generic error if session is still valid but fetch failed
+                    if (!error.message.includes('expired')) {
+                         showMessage('Could not load camps: ' + error.message, 'error');
+                    }
+                }
+            }
+        }
+        
+        /**
+         * NEW: Fetches the current user's booked slots.
+         */
+        async function fetchMyBookings() {
+            if (!appState.user || appState.user.role !== 'user' || !appState.user.token) return;
+            try {
+                const data = await apiRequest('/bookings/my', { method: 'GET' });
+                appState.myBookings = data;
+                renderApp();
+            } catch (error) {
+                console.error('Failed to fetch user bookings:', error);
+                showMessage('Could not load your bookings: ' + error.message, 'error');
+            }
+        }
+        
+        /**
+         * NEW: Fetches all patient bookings for the Admin dashboard.
+         */
+        async function fetchAllAdminBookings() {
+            if (!appState.user || appState.user.role !== 'admin' || !appState.user.token) return;
+            try {
+                const data = await apiRequest('/bookings/admin', { method: 'GET' });
+                appState.adminBookings = data;
+                renderApp();
+            } catch (error) {
+                console.error('Failed to fetch admin bookings:', error);
+                showMessage('Could not load all patient bookings: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * NEW: Fetches all public feedback.
+         */
+        async function fetchFeedback() {
+            // Feedback is viewable by all logged-in users
+            if (!appState.user || !appState.user.token) return;
+
+            try {
+                const data = await apiRequest('/feedback', { method: 'GET' });
+                appState.allFeedback = data;
+                renderApp();
+            } catch (error) {
+                console.error('Failed to fetch feedback:', error);
+                // We won't show an error message here as it pollutes the UI, but we log it.
+            }
+        }
+
+        /**
+         * Handles the Admin Login form submission.
+         */
+        async function handleAdminLogin(event) {
+            event.preventDefault(); // CRITICAL: Stop page refresh
+            
+            const username = event.target.elements['admin-username'].value;
+            const password = event.target.elements['admin-password'].value;
+            
+            showMessage('Attempting secure Admin login...', 'success');
+
+            try {
+                const data = await apiRequest('/auth/admin/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password }), 
+                    headers: { 'Content-Type': 'application/json', 'Authorization': '' } 
+                });
+
+                appState.user = {
+                    userId: ADMIN_USERNAME,
+                    name: 'Admin',
+                    role: 'admin',
+                    token: data.token 
+                };
+                appState.view = 'adminDashboard';
+                showMessage('Admin Login successful! Fetching data...', 'success');
+                startPolling(); // Use new polling function
+                return { success: true }; // Return status
+            } catch (error) {
+                const errorMessage = error.message.includes('failed') || error.message.includes('refused')
+                    ? 'Failed to connect to API. Please ensure your Node.js server is running.'
+                    : 'Admin Login Failed: Invalid Credentials.';
+                showMessage(errorMessage, 'error');
+                event.target.reset(); 
+                return { success: false, error: error.message }; // Return status
+            }
+        }
+
+        /**
+         * Handles the real Google Sign-In using Firebase, then acquires a JWT from the API server.
+         */
+        async function handleGoogleLogin() {
+            try {
+                showMessage('Initiating Google Sign-In via Firebase...', 'success');
+                const provider = new window.GoogleAuthProvider();
+                
+                const result = await window.signInWithPopup(window.auth, provider);
+                const firebaseUser = result.user;
+                const userName = firebaseUser.displayName || firebaseUser.email.split('@')[0];
+                
+                const apiData = await apiRequest('/auth/user/login', { 
+                    method: 'POST', 
+                    body: JSON.stringify({ 
+                        uid: firebaseUser.uid,
+                        userName: userName
+                    }),
+                    headers: { 'Content-Type': 'application/json', 'Authorization': '' } 
+                });
+
+                appState.user = {
+                    userId: firebaseUser.uid,
+                    name: userName,
+                    email: firebaseUser.email,
+                    role: 'user',
+                    token: apiData.token 
+                };
+                appState.view = 'userDashboard';
+                showMessage(`Welcome, ${appState.user.name}! Fetching data...`, 'success');
+                startPolling(); // Use new polling function
+                return { success: true }; // Return status
+
+            } catch (error) {
+                console.error("Google Login Error:", error);
+                const msg = error.code === 'auth/popup-closed-by-user' ? 'Sign-in cancelled by user.' : error.message || 'Google Login failed.';
+                showMessage(msg, 'error');
+                if (window.auth.currentUser) await window.signOut(window.auth); 
+                return { success: false, error: error.message }; // Return status
+            }
+        }
+        
+        /**
+         * Handles the user attempting to book a slot.
+         */
+        function handleBookSlot(campId, campName) {
+             const action = async () => {
+                try {
+                    const response = await apiRequest(`/camps/${campId}/book`, { 
+                        method: 'POST',
+                        body: JSON.stringify({ campName })
+                    });
+
+                    // Success!
+                    showMessage(`Booking successful! Your unique number is ${response.booking.bookingNumber}`, 'success');
+                    refreshAllData(); // Refresh both camps (for visual feedback) and user bookings
+                } catch (error) {
+                    if (error.message.includes('already booked')) {
+                        showMessage(`Booking failed: You already have a slot for this camp.`, 'error');
+                    } else {
+                        showMessage('Booking failed: ' + error.message, 'error');
+                    }
+                }
+             };
+             
+            // Check if already booked
+            const isBooked = appState.myBookings.some(b => b.campId === campId);
+            if (isBooked) {
+                showMessage(`You have already booked a slot for "${campName}". Check 'My Bookings'.`, 'error');
+                return;
+            }
+
+             openModal('confirm', null, action, 
+                `Confirm booking a slot for the camp: ${campName}? You will receive a unique booking number.`, 
+                'Confirm Booking'
+             );
+        }
+
+        /**
+         * Handles the Camp form (Add/Edit) submission. Requires Admin Auth.
+         */
+        async function handleCampSubmit(event) {
+            event.preventDefault(); // CRITICAL: Stop form refresh
+
+            if (appState.user.role !== 'admin') {
+                showMessage('Admin privileges required.', 'error');
+                return;
+            }
+
+            const form = event.target;
+            
+            // Extract Doctor details from dynamically generated fields
+            const doctors = [];
+            const doctorContainers = form.querySelectorAll('.doctor-entry');
+            doctorContainers.forEach(container => {
+                const nameInput = container.querySelector('[name="doctorName"]');
+                const specialtyInput = container.querySelector('[name="doctorSpecialty"]');
+                if (nameInput && specialtyInput && nameInput.value.trim() && specialtyInput.value.trim()) {
+                    doctors.push({
+                        name: nameInput.value.trim(),
+                        specialty: specialtyInput.value.trim()
+                    });
+                }
+            });
+
+            const campData = {
+                name: form.campName.value,
+                date: form.campDate.value,
+                time: form.campTime.value, 
+                location: form.campLocation.value,
+                address: form.campAddress.value,
+                mapUrl: form.campMapUrl.value,
+                contact: form.campContact.value,
+                details: form.campDetails.value,
+                doctors: doctors // Include the collected doctor array
+            };
+
+            const isEdit = appState.modal.type === 'edit';
+            const campId = form.campId.value; 
+
+            try {
+                if (isEdit) {
+                    await apiRequest(`/camps/${campId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(campData)
+                    });
+                    showMessage(`Camp "${campData.name}" updated successfully.`, 'success');
+                } else {
+                    const response = await apiRequest('/camps', {
+                        method: 'POST',
+                        body: JSON.stringify(campData)
+                    });
+                    showMessage(`New Camp "${response.camp.name}" added successfully.`, 'success');
+                }
+
+                closeModal();
+                fetchCamps(); 
+
+            } catch (error) {
+                showMessage('Operation Failed: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * Handles camp deletion. Requires Admin Auth.
+         */
+        function handleDeleteCamp(campId, campName) {
+            const action = async () => {
+                if (appState.user.role !== 'admin') {
+                    showMessage('Admin privileges required.', 'error');
+                    return;
+                }
+                
+                try {
+                    await apiRequest(`/camps/${campId}`, { method: 'DELETE' });
+                    showMessage(`Camp "${campName}" deleted successfully.`, 'success');
+                    fetchCamps(); // Refresh data
+                } catch (error) {
+                    showMessage('Deletion Failed: ' + error.message, 'error');
+                }
+            };
+
+            openModal('confirm', null, action, 
+                `Are you sure you want to PERMANENTLY DELETE the camp: ${campName}? This action cannot be undone.`, 
+                'Yes, Delete Camp'
+            );
+        }
+        
+        /**
+         * Handles user feedback submission.
+         */
+        async function handleFeedbackSubmit(event) {
+            event.preventDefault();
+
+            const form = event.target;
+            const rating = parseInt(form.rating.value, 10);
+            const comment = form.comment.value.trim();
+
+            if (!comment || comment.length < 10) {
+                 showMessage('Please provide a meaningful comment (min 10 characters).', 'error');
+                 return;
+            }
+            
+            try {
+                const response = await apiRequest('/feedback', {
+                    method: 'POST',
+                    body: JSON.stringify({ rating, comment })
+                });
+
+                showMessage(response.message || 'Feedback submitted successfully!', 'success');
+                form.reset();
+                fetchFeedback(); // Refresh public feedback list
+            } catch (error) {
+                console.error("Feedback Submission Error:", error);
+                showMessage('Failed to submit feedback: ' + error.message, 'error');
+            }
+        }
+        
+        /**
+         * Function to add a new empty doctor entry to the modal state.
+         */
+        function addDoctor() {
+            const camp = appState.modal.campToEdit = appState.modal.campToEdit || {};
+            camp.doctors = camp.doctors || [];
+            camp.doctors.push({ name: '', specialty: '' });
+            // Re-render the modal to show the new empty doctor fields
+            openModal(appState.modal.type, camp._id); 
+        }
+
+        /**
+         * Function to remove a doctor entry from the modal state by index.
+         */
+        function removeDoctor(index) {
+            const camp = appState.modal.campToEdit;
+            if (camp && camp.doctors && index >= 0 && index < camp.doctors.length) {
+                camp.doctors.splice(index, 1);
+                // Re-render the modal to reflect the removal
+                openModal(appState.modal.type, camp._id);
+            }
+        }
+
+        /**
+         * Utility function to update the doctor data in the modal state dynamically.
+         */
+        function updateDoctorData(index, field, value) {
+            const camp = appState.modal.campToEdit;
+            if (camp && camp.doctors && camp.doctors[index]) {
+                camp.doctors[index][field] = value;
+            }
+        }
+
+
+        // --- UI Rendering Functions ---
+
+        /**
+         * Renders the current message/alert banner.
+         */
+        function renderMessage() {
+            if (!appState.message.text) return '';
+
+            const baseClass = "p-3 rounded-lg flex items-center mb-6 max-w-4xl mx-auto font-medium shadow-lg transition-all duration-300";
+            let colorClass = '';
+            let icon = '';
+
+            switch (appState.message.type) {
+                case 'success':
+                    colorClass = 'bg-emerald-100 text-emerald-800 border border-emerald-300';
+                    icon = 'CheckCircle';
+                    break;
+                case 'error':
+                    colorClass = 'bg-red-100 text-red-800 border border-red-300';
+                    icon = 'AlertTriangle';
+                    break;
+                default:
+                    colorClass = 'bg-blue-100 text-blue-800 border border-blue-300';
+                    icon = 'Info';
+                    break;
+            }
+
+            return `
+                <div class="${baseClass} ${colorClass}" role="alert">
+                    <i data-lucide="${icon}" class="w-5 h-5 mr-3 flex-shrink-0"></i>
+                    <div>${appState.message.text}</div>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders the Login View (Admin and User).
+         */
+        function renderLoginView() {
+            // Adjusted the inner structure of the login cards to use flex-column for better vertical alignment within the card
+            return `
+                <div class="grid md:grid-cols-2 gap-8 md:gap-12 max-w-4xl mx-auto">
+
+                    <div class="auth-card p-8 sm:p-10 rounded-2xl transition duration-500 hover:shadow-2xl flex flex-col justify-between">
+                        <div>
+                            <h2 class="text-4xl font-extrabold text-blue-600 mb-6 flex items-center">
+                                <i data-lucide="User" class="w-8 h-8 mr-3"></i> Patient Access
+                            </h2>
+                            <p class="text-gray-600 mb-10 text-lg">
+                                Sign in securely with Google to view real-time camp locations and **book your slot**.
+                            </p>
+                        </div>
+                        <button onclick="handleGoogleLogin()" class="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl cta-button">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo_2013_Google.png" class="w-5 h-5 mr-3 bg-white p-0.5 rounded-full" alt="Google icon">
+                            Sign in with Google
+                        </button>
+                    </div>
+
+                    <div class="auth-card bg-gray-50/50 p-8 sm:p-10 rounded-2xl transition duration-500 hover:shadow-2xl border border-gray-200 flex flex-col justify-between">
+                        <div>
+                            <h2 class="text-4xl font-extrabold text-emerald-600 mb-6 flex items-center">
+                                <i data-lucide="ShieldCheck" class="w-8 h-8 mr-3"></i> Admin Panel
+                            </h2>
+                            <p class="text-gray-600 mb-8 text-lg">
+                                Authorized personnel manage, publish camps, and view **all patient bookings**.
+                            </p>
+                        </div>
+                        <form onsubmit="handleAdminLogin(event)" class="space-y-4">
+                            <div>
+                                <label for="admin-username" class="block text-sm font-medium text-gray-700">Username</label>
+                                <input type="text" id="admin-username" name="username" required 
+                                    class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-inner focus:ring-emerald-500 focus:border-emerald-500" 
+                                    placeholder="${ADMIN_USERNAME}" value="${ADMIN_USERNAME}">
+                            </div>
+                            <div>
+                                <label for="admin-password" class="block text-sm font-medium text-gray-700">Password</label>
+                                <input type="password" id="admin-password" name="password" required 
+                                    class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-inner focus:ring-emerald-500 focus:border-emerald-500" 
+                                    placeholder="SJCHS@123" value="${ADMIN_PASSWORD}">
+                            </div>
+                            <button type="submit" class="w-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl cta-button mt-6">
+                                <i data-lucide="LogIn" class="w-5 h-5 mr-2"></i> Admin Sign In
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders the Doctor list for a Camp Card.
+         */
+        function renderDoctorsList(doctors) {
+            if (!doctors || doctors.length === 0) {
+                return '<p class="text-xs text-gray-400 mt-2">No specialist doctors listed.</p>';
+            }
+            
+            return `
+                <div class="mt-3 pt-3 border-t border-gray-100">
+                    <p class="font-bold text-sm text-blue-800 mb-1 flex items-center">
+                        <i data-lucide="Stethoscope" class="w-4 h-4 mr-2"></i> Specialist Doctors:
+                    </p>
+                    <ul class="space-y-1">
+                        ${doctors.map(d => `
+                            <li class="text-xs text-gray-600 flex items-start">
+                                <i data-lucide="User" class="w-3 h-3 mr-1 mt-0.5 flex-shrink-0 text-emerald-500"></i>
+                                <span class="font-medium">${d.name}</span>, ${d.specialty}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+
+        /**
+         * Renders a single Camp Card for the User Dashboard.
+         */
+        function renderCampCard(camp) {
+            const campId = camp._id || camp.id; 
+            const campDate = new Date(camp.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            const campTime = camp.time && camp.time !== 'N/A' ? camp.time : 'Full Day';
+            
+            // Check if the user has already booked this camp
+            const isBooked = appState.myBookings.some(b => b.campId === campId);
+            const bookingButton = isBooked
+                ? `
+                    <button disabled class="w-full flex items-center justify-center bg-gray-400 text-white font-bold py-3 px-4 rounded-xl mt-4 cursor-not-allowed">
+                        <i data-lucide="CheckCircle" class="w-5 h-5 mr-2"></i> Slot Booked
+                    </button>
+                  `
+                : `
+                    <button onclick="handleBookSlot('${campId}', '${camp.name}')" class="w-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl cta-button mt-4">
+                        <i data-lucide="Ticket" class="w-5 h-5 mr-2"></i> Book Slot
+                    </button>
+                  `;
+
+            return `
+                <div class="bg-white p-6 rounded-xl shadow-xl border-t-8 border-blue-500 transition duration-300 hover:shadow-2xl hover:scale-[1.01]">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-xl font-bold text-gray-800">${camp.name}</h3>
+                        <span class="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-700 animate-pulse">
+                            <i data-lucide="HeartPulse" class="w-4 h-4 mr-1"></i> LIVE
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-4">${camp.details || 'No additional details provided.'}</p>
+                    
+                    <div class="space-y-3 text-sm text-gray-700">
+                        <p class="flex items-center font-medium">
+                            <i data-lucide="CalendarCheck" class="w-4 h-4 mr-2 text-emerald-600"></i>
+                            Date: <span class="ml-1">${campDate}</span>
+                        </p>
+                        <p class="flex items-center font-medium">
+                            <i data-lucide="Clock" class="w-4 h-4 mr-2 text-emerald-600"></i>
+                            Time: <span class="ml-1">${campTime}</span>
+                        </p>
+                        <p class="flex items-start">
+                            <i data-lucide="MapPin" class="w-4 h-4 mt-1 mr-2 text-red-500 flex-shrink-0"></i>
+                            <span class="font-medium">Location:</span> 
+                            <span>${camp.location} (${camp.address})</span>
+                        </p>
+                        ${renderDoctorsList(camp.doctors)}
+                    </div>
+                    
+                    <a href="${camp.mapUrl}" target="_blank" class="text-sm font-semibold text-blue-600 hover:text-blue-800 flex items-center transition duration-200 mt-4">
+                                Get Directions <i data-lucide="ExternalLink" class="w-4 h-4 ml-1"></i>
+                        </a>
+                    
+                    ${bookingButton}
+
+                </div>
+            `;
+        }
+        
+        /**
+         * NEW: Renders the user's list of booked slots.
+         */
+        function renderMyBookings() {
+            const bookingsRows = appState.myBookings.length > 0
+                ? appState.myBookings.map(b => `
+                    <tr class="border-b hover:bg-emerald-50/50 transition duration-150">
+                        <td class="p-4 font-medium text-gray-700">${b.campName}</td>
+                        <td class="p-4"><span class="booking-badge">${b.bookingNumber}</span></td>
+                        <td class="p-4 text-sm">${new Date(b.bookedAt).toLocaleDateString()}</td>
+                    </tr>
+                `).join('')
+                : `
+                    <tr>
+                        <td colspan="3" class="p-8 text-center text-gray-500">
+                            <i data-lucide="Ticket" class="w-8 h-8 mx-auto mb-2"></i>
+                            You haven't booked any slots yet. Book one from the list above!
+                        </td>
+                    </tr>
+                `;
+
+            return `
+                <div class="mt-12">
+                    <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
+                        <i data-lucide="CalendarClock" class="w-6 h-6 mr-3 text-emerald-600"></i> My Booked Slots
+                    </h3>
+                    <div class="bg-white rounded-xl shadow-2xl overflow-x-auto dashboard-card border-t-4 border-emerald-500">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Camp Name</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Unique Booking No.</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Booked Date</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${bookingsRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+        
+        /**
+         * Renders the User Feedback Form and Public Feedback list.
+         */
+        function renderFeedbackSection() {
+            const feedbackList = appState.allFeedback.length > 0
+                ? appState.allFeedback.map(f => `
+                    <div class="bg-white p-5 rounded-xl shadow-md border border-gray-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center space-x-2">
+                                <i data-lucide="UserCircle" class="w-5 h-5 text-blue-500"></i>
+                                <span class="font-semibold text-gray-800">${f.userName}</span>
+                            </div>
+                            <span class="text-xs text-gray-500">${new Date(f.submittedAt).toLocaleDateString()}</span>
+                        </div>
+                        <div class="flex items-center space-x-1 mb-2">
+                            ${renderRatingStars(f.rating)}
+                            <span class="text-xs text-gray-500 ml-2">${f.rating}/5</span>
+                        </div>
+                        <p class="text-sm text-gray-700 italic">"${f.comment}"</p>
+                    </div>
+                `).join('')
+                : `
+                    <div class="text-center p-8 bg-white/70 rounded-xl border border-dashed border-gray-300">
+                        <i data-lucide="MessageSquare" class="w-8 h-8 mx-auto text-gray-400 mb-2"></i>
+                        <p class="text-gray-500">No public feedback yet. Be the first to share your experience!</p>
+                    </div>
+                `;
+
+            return `
+                <div class="mt-12 grid lg:grid-cols-3 gap-8">
+                    
+                    <!-- Feedback Submission Form -->
+                    <div class="lg:col-span-1">
+                        <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
+                            <i data-lucide="Star" class="w-6 h-6 mr-3 text-yellow-500 fill-yellow-500"></i> Share Your Feedback
+                        </h3>
+                        <div class="bg-white p-6 rounded-xl shadow-2xl dashboard-card border-t-4 border-yellow-500">
+                            <form onsubmit="handleFeedbackSubmit(event)" class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Your Rating</label>
+                                    <select name="rating" required class="w-full p-2 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500">
+                                        <option value="5">5 - Excellent</option>
+                                        <option value="4">4 - Very Good</option>
+                                        <option value="3">3 - Good</option>
+                                        <option value="2">2 - Fair</option>
+                                        <option value="1">1 - Poor</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="comment" class="block text-sm font-medium text-gray-700">Your Comment</label>
+                                    <textarea id="comment" name="comment" rows="4" required minlength="10"
+                                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-yellow-500 focus:border-yellow-500"
+                                        placeholder="I found the camp to be very helpful and well organized..."></textarea>
+                                </div>
+                                <button type="submit" class="w-full flex items-center justify-center bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-xl cta-button">
+                                    <i data-lucide="Send" class="w-5 h-5 mr-2"></i> Submit Feedback
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Public Feedback Display -->
+                    <div class="lg:col-span-2">
+                         <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
+                            <i data-lucide="Users" class="w-6 h-6 mr-3 text-blue-600"></i> Public Feedback (${appState.allFeedback.length})
+                        </h3>
+                        <div class="space-y-4">
+                            ${feedbackList}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders the User Dashboard View.
+         */
+        function renderUserDashboard() {
+            const campsList = appState.camps.length > 0
+                ? appState.camps.map(renderCampCard).join('')
+                : `
+                    <div class="col-span-full text-center p-12 bg-white rounded-xl border border-dashed border-gray-300 shadow-inner">
+                        <i data-lucide="Frown" class="w-12 h-12 mx-auto text-gray-400 mb-3"></i>
+                        <p class="text-lg font-semibold text-gray-600">No Live Medical Camps Found</p>
+                        <p class="text-gray-500">The administrators have not posted any active camps yet. Check back soon!</p>
+                    </div>
+                  `;
+
+            const username = appState.user ? appState.user.name : 'Health Seeker';
+            const whatsappLink = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WHATSAPP_MESSAGE)}`;
+
+            return `
+                <div class="flex justify-between items-center flex-wrap gap-4 mb-6">
+                    <h2 class="text-4xl font-extrabold text-gray-800">
+                        Welcome, ${username}!
+                    </h2>
+                    <a href="${whatsappLink}" target="_blank" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-5 rounded-xl transition duration-300 cta-button flex items-center shadow-lg">
+                        <i data-lucide="MessageSquareText" class="w-5 h-5 mr-2 fill-white"></i> WhatsApp Support
+                    </a>
+                </div>
+                
+                <div class="bg-blue-100 p-4 rounded-lg border-l-4 border-blue-500 mb-8 text-sm text-blue-800 shadow-md">
+                    <p class="font-medium flex items-center">
+                        <i data-lucide="Info" class="w-4 h-4 mr-2 flex-shrink-0"></i>
+                        Your session is secure via JWT. Data is updated every 10 seconds. Click on a card to view doctors!
+                    </p>
+                </div>
+                
+                <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
+                    <i data-lucide="Tent" class="w-6 h-6 mr-3 text-blue-600"></i> Live Camp Listings
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    ${campsList}
+                </div>
+                
+                ${renderMyBookings()}
+                
+                ${renderFeedbackSection()}
+            `;
+        }
+        
+        /**
+         * NEW: Renders the Admin's view of all patient bookings.
+         */
+        function renderAdminBookingsTable() {
+            const bookingRows = appState.adminBookings.length > 0
+                ? appState.adminBookings.map(b => `
+                    <tr class="border-b hover:bg-red-50/50 transition duration-150">
+                        <td class="p-4 font-medium text-gray-700">${b.campName}</td>
+                        <td class="p-4 text-sm">${b.userName}</td>
+                        <td class="p-4 text-sm">${b.userId.substring(0, 8)}...</td>
+                        <td class="p-4"><span class="booking-badge !bg-red-100 !text-red-700">${b.bookingNumber}</span></td>
+                        <td class="p-4 text-sm">${new Date(b.bookedAt).toLocaleDateString()}</td>
+                    </tr>
+                `).join('')
+                : `
+                    <tr>
+                        <td colspan="5" class="p-8 text-center text-gray-500">
+                            <i data-lucide="Users" class="w-8 h-8 mx-auto mb-2"></i>
+                            No patient slots have been booked yet.
+                        </td>
+                    </tr>
+                `;
+
+            return `
+                <div class="mt-12">
+                    <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
+                        <i data-lucide="ClipboardList" class="w-6 h-6 mr-3 text-red-600"></i> Patient Slots Booked (${appState.adminBookings.length})
+                    </h3>
+                    <div class="bg-white rounded-xl shadow-2xl overflow-x-auto dashboard-card border-t-4 border-red-500">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Camp Name</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Patient Name</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Patient ID (UID)</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Booking Number</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Booked At</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                ${bookingRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders a single Camp Row for the Admin Dashboard.
+         */
+        function renderAdminCampRow(camp) {
+            const campId = camp._id || camp.id; 
+            const campDate = new Date(camp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            return `
+                <tr class="border-b hover:bg-emerald-50/50 transition duration-150">
+                    <td class="p-4 font-semibold text-gray-700">${camp.name}</td>
+                    <td class="p-4 text-sm">${campDate} (${camp.time || 'N/A'})</td>
+                    <td class="p-4 text-sm">${camp.location}</td>
+                    <td class="p-4 text-sm max-w-xs truncate">${camp.address}</td>
+                    <td class="p-4 space-x-2 flex">
+                        <button onclick="openModal('edit', '${campId}')" class="text-blue-500 hover:text-blue-700 p-2 rounded-full hover:bg-blue-100 transition shadow-md" title="Edit Camp">
+                            <i data-lucide="Pencil" class="w-5 h-5"></i>
+                        </button>
+                        <button onclick="handleDeleteCamp('${campId}', '${camp.name}')" class="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-100 transition shadow-md" title="Delete Camp">
+                            <i data-lucide="Trash2" class="w-5 h-5"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+
+        /**
+         * Renders the Admin Dashboard View.
+         */
+        function renderAdminDashboard() {
+            const campsRows = appState.camps.length > 0
+                ? appState.camps.map(renderAdminCampRow).join('')
+                : `
+                    <tr>
+                        <td colspan="5" class="p-10 text-center text-gray-500">
+                            <i data-lucide="ClipboardList" class="w-8 h-8 mx-auto mb-2"></i>
+                            No camps have been added yet. Click 'Add New Camp' to begin.
+                        </td>
+                    </tr>
+                `;
+
+            return `
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-4xl font-extrabold text-gray-800">Admin Dashboard</h2>
+                    <button onclick="openModal('add')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-5 rounded-xl transition duration-300 cta-button flex items-center">
+                        <i data-lucide="PlusCircle" class="w-5 h-5 mr-2"></i> Add New Camp
+                    </button>
+                </div>
+                
+                <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
+                    <i data-lucide="Tent" class="w-6 h-6 mr-3 text-emerald-600"></i> Active Camp Management
+                </h3>
+
+                <div class="bg-white rounded-xl shadow-2xl overflow-x-auto dashboard-card border-t-4 border-emerald-500">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Camp Name</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Date & Time</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Location</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Address</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            ${campsRows}
+                        </tbody>
+                    </table>
+                </div>
+                
+                ${renderAdminBookingsTable()}
+            `;
+        }
+
+        /**
+         * Opens the modal for adding, editing a camp, or confirming an action.
+         */
+        function openModal(type, campId = null, action = null, message = '', buttonText = '') {
+            appState.modal.type = type;
+            appState.modal.isOpen = true;
+            
+            if (type === 'confirm') {
+                appState.modal.confirmAction = action;
+                appState.modal.confirmMessage = message;
+                appState.modal.confirmButtonText = buttonText;
+                appState.modal.campToEdit = null;
+            } else {
+                appState.modal.campToEdit = (type === 'edit')
+                    ? appState.camps.find(c => (c._id || c.id) === campId)
+                    : { doctors: [] }; // Initialize doctors array for new camp
+            }
+
+            const modalContainer = document.getElementById('modal-container');
+            if (modalContainer) {
+                modalContainer.innerHTML = renderModal();
+                // Scoped icon render for modal only
+                lucide.createIcons({ attr: 'data-lucide', element: modalContainer });
+            }
+        }
+
+        /**
+         * Closes the modal.
+         */
+        function closeModal() {
+            appState.modal.isOpen = false;
+            appState.modal.campToEdit = null;
+            appState.modal.confirmAction = null;
+            
+            const modalContainer = document.getElementById('modal-container');
+            if (modalContainer) modalContainer.innerHTML = ''; // Clear modal content
+            renderApp();
+        }
+        
+        /**
+         * Renders the dynamically managed Doctor input fields.
+         */
+        function renderDoctorInputs(camp) {
+            const doctors = camp.doctors || [];
+
+            const inputs = doctors.map((doctor, index) => `
+                <div class="doctor-entry flex space-x-2 p-3 doctor-card rounded-lg shadow-inner items-end">
+                    <div class="flex-grow">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Doctor Name</label>
+                        <input type="text" name="doctorName" required value="${doctor.name || ''}" 
+                            oninput="updateDoctorData(${index}, 'name', this.value)"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Dr. John Doe">
+                    </div>
+                    <div class="flex-grow">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Specialty/Designation</label>
+                        <input type="text" name="doctorSpecialty" required value="${doctor.specialty || ''}"
+                            oninput="updateDoctorData(${index}, 'specialty', this.value)"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Cardiologist">
+                    </div>
+                    <button type="button" onclick="removeDoctor(${index})" class="p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition duration-200 flex-shrink-0" title="Remove Doctor">
+                        <i data-lucide="X" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            return `
+                <div class="mt-6 pt-6 border-t border-gray-200">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-lg font-semibold text-gray-700 flex items-center">
+                            <i data-lucide="Stethoscope" class="w-5 h-5 mr-2 text-blue-600"></i> Specialist Doctors (${doctors.length})
+                        </h4>
+                        <button type="button" onclick="addDoctor()" class="flex items-center text-blue-600 hover:text-blue-700 font-medium text-sm border border-blue-200 hover:bg-blue-50 py-2 px-3 rounded-xl transition duration-200">
+                            <i data-lucide="Plus" class="w-4 h-4 mr-1"></i> Add Doctor
+                        </button>
+                    </div>
+                    <div class="space-y-3 max-h-64 overflow-y-auto pr-2">
+                        ${inputs}
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders the camp management modal (Add/Edit).
+         */
+        function renderCampFormModal() {
+            const isEdit = appState.modal.type === 'edit';
+            // Use appState.modal.campToEdit which is maintained across re-renders for doctor additions
+            const camp = appState.modal.campToEdit || {}; 
+            const title = isEdit ? 'Edit Medical Camp' : 'Add New Medical Camp';
+            const buttonText = isEdit ? 'Update Camp Details' : 'Publish New Camp';
+
+            // --- DATE/TIME HANDLING FIX ---
+            let defaultDate = '';
+            if (isEdit && camp.date) {
+                try {
+                    defaultDate = camp.date.split('T')[0];
+                } catch (e) {
+                    defaultDate = camp.date || ''; 
+                }
+            }
+            const defaultTime = camp.time || '';
+            // -----------------------------
+
+
+            return `
+                <div class="flex justify-between items-center pb-4 border-b">
+                    <h3 class="text-2xl font-bold text-gray-800">${title}</h3>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100">
+                        <i data-lucide="X" class="w-6 h-6"></i>
+                    </button>
+                </div>
+                
+                <form onsubmit="handleCampSubmit(event)" class="mt-6 space-y-4">
+                    <input type="hidden" name="campId" value="${camp._id || ''}">
+
+                    <div>
+                        <label for="campName" class="block text-sm font-medium text-gray-700">Camp Name</label>
+                        <input type="text" id="campName" name="campName" required value="${camp.name || ''}"
+                            class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                            <label for="campDate" class="block text-sm font-medium text-gray-700">Date</label>
+                            <input type="date" id="campDate" name="campDate" required value="${defaultDate}"
+                                class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label for="campTime" class="block text-sm font-medium text-gray-700">Time</label>
+                            <input type="time" id="campTime" name="campTime" value="${defaultTime}"
+                                class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label for="campContact" class="block text-sm font-medium text-gray-700">Support Contact</label>
+                            <input type="tel" id="campContact" name="campContact" value="${camp.contact || ''}"
+                                class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label for="campLocation" class="block text-sm font-medium text-gray-700">Location Name (e.g., Community Hall, School)</label>
+                        <input type="text" id="campLocation" name="campLocation" required value="${camp.location || ''}"
+                            class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                    </div>
+                    
+                    <div>
+                        <label for="campAddress" class="block text-sm font-medium text-gray-700">Full Address</label>
+                        <input type="text" id="campAddress" name="campAddress" required value="${camp.address || ''}"
+                            class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                    </div>
+                    
+                    <div>
+                        <label for="campMapUrl" class="block text-sm font-medium text-gray-700">Google Maps URL</label>
+                        <input type="url" id="campMapUrl" name="campMapUrl" required value="${camp.mapUrl || ''}"
+                            class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500">
+                    </div>
+
+                    <div>
+                        <label for="campDetails" class="block text-sm font-medium text-gray-700">Camp Details (Services Offered)</label>
+                        <textarea id="campDetails" name="campDetails" rows="3"
+                            class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-emerald-500 focus:border-emerald-500">${camp.details || ''}</textarea>
+                    </div>
+                    
+                    ${renderDoctorInputs(camp)}
+                    
+                    <div class="pt-4">
+                        <button type="submit" class="w-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl cta-button">
+                            <i data-lucide="${isEdit ? 'Save' : 'Send'}" class="w-5 h-5 mr-2"></i> ${buttonText}
+                        </button>
+                    </div>
+                </form>
+            `;
+        }
+
+        /**
+         * Renders the generic confirmation modal.
+         */
+        function renderConfirmModal() {
+            const { confirmMessage, confirmButtonText, confirmAction } = appState.modal;
+            
+            const handleConfirm = () => {
+                closeModal();
+                if (confirmAction) confirmAction();
+            };
+
+            return `
+                <div class="flex justify-between items-center pb-4 border-b">
+                    <h3 class="text-2xl font-bold text-gray-800 flex items-center">
+                        <i data-lucide="AlertTriangle" class="w-6 h-6 mr-2 text-red-500"></i> Confirmation Required
+                    </h3>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100">
+                        <i data-lucide="X" class="w-6 h-6"></i>
+                    </button>
+                </div>
+                
+                <div class="mt-6">
+                    <p class="text-lg text-gray-700">${confirmMessage}</p>
+                </div>
+
+                <div class="pt-6 flex justify-end space-x-3">
+                    <button onclick="closeModal()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-4 rounded-xl transition duration-200">
+                        Cancel
+                    </button>
+                    <button onclick="handleConfirm()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl cta-button">
+                        <i data-lucide="Check" class="w-5 h-5 mr-2"></i> ${confirmButtonText}
+                    </button>
+                </div>
+            `;
+        }
+
+        /**
+         * Renders the appropriate modal content based on state.
+         */
+        function renderModal() {
+            if (!appState.modal.isOpen) return '';
+
+            let modalContent = '';
+            let isConfirm = false;
+            let maxWidth = 'max-w-lg';
+
+            switch (appState.modal.type) {
+                case 'add':
+                case 'edit':
+                    modalContent = renderCampFormModal();
+                    maxWidth = 'max-w-xl';
+                    break;
+                case 'confirm':
+                    modalContent = renderConfirmModal();
+                    isConfirm = true;
+                    break;
+                default:
+                    return ''; // Should not happen
+            }
+
+            const borderClass = isConfirm ? 'border-t-4 border-red-500' : 'border-t-4 border-emerald-500';
+
+            return `
+                <div class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center p-4" onclick="if (event.target.classList.contains('fixed')) closeModal()">
+                    <div class="bg-white rounded-xl shadow-2xl w-full ${maxWidth} p-6 sm:p-8 transform transition-all scale-100 ${borderClass}" onclick="event.stopPropagation()">
+                        ${modalContent}
+                    </div>
+                </div>
+            `;
+        }
+
+
+        /**
+         * Renders the navigation bar controls (Logout/Username).
+         */
+        function renderNavbar() {
+            const navbarEl = document.getElementById('navbar-controls');
+            let content = '';
+
+            if (appState.user) {
+                const icon = appState.user.role === 'admin' ? 'Shield' : 'User';
+                const color = appState.user.role === 'admin' ? 'text-emerald-600' : 'text-blue-600';
+                
+                content = `
+                    <div class="flex items-center space-x-4">
+                        <span class="flex items-center text-sm font-semibold p-2 rounded-full ${color} bg-gray-100 shadow-inner">
+                            <i data-lucide="${icon}" class="w-4 h-4 mr-1"></i>
+                            ${appState.user.role === 'admin' ? 'Admin' : appState.user.name.split(' ')[0]}
+                        </span>
+                        <button onclick="handleLogout()" class="text-gray-500 hover:text-red-600 transition duration-300 flex items-center p-2 rounded-full hover:bg-red-50">
+                            <i data-lucide="LogOut" class="w-5 h-5 mr-1"></i>
+                            <span class="hidden sm:inline">Logout</span>
+                        </button>
+                    </div>
+                `;
+            } else {
+                content = `
+                    <button onclick="appState.view = 'login'; renderApp();" class="text-blue-600 hover:text-blue-800 transition duration-300 flex items-center p-2 rounded-full hover:bg-blue-50">
+                        <i data-lucide="LogIn" class="w-5 h-5 mr-1"></i>
+                        Login
+                    </button>
+                `;
+            }
+            navbarEl.innerHTML = content;
+            // FIX: Scoped icon render for navbar only
+            lucide.createIcons({ attr: 'data-lucide', element: navbarEl });
+        }
+
+        /**
+         * Main render function that updates the entire UI based on application state.
+         */
+        function renderApp() {
+            const container = document.getElementById('app-container');
+            const mainEl = document.getElementById('main-content'); // Get main element
+            let content = '';
+
+            renderNavbar(); 
+
+            // FIX 3: Robustly control the alignment of the main content area.
+            if (appState.view === 'login' || appState.view === 'loading') {
+                // For login/loading: center content vertically and horizontally
+                mainEl.classList.add('items-center');
+                container.classList.add('flex', 'flex-col', 'items-center', 'justify-center', 'min-h-[70vh]');
+                container.classList.remove('p-8', 'sm:p-12'); // Remove dashboard padding for centered views
+            } else {
+                // For dashboards: align content to the top (start)
+                mainEl.classList.remove('items-center');
+                container.classList.remove('flex', 'flex-col', 'items-center', 'justify-center', 'min-h-[70vh]');
+                container.classList.add('p-8', 'sm:p-12'); // Add dashboard padding
+            }
+
+            if (appState.view === 'loading') {
+                content = `
+                    <div class="text-center p-20">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-emerald-600 mx-auto mb-4"></div>
+                        <p class="text-lg text-gray-600">Connecting to secure services...</p>
+                    </div>
+                `;
+            } else {
+                // Render message content separately
+                const messageHtml = renderMessage();
+                
+                switch (appState.view) {
+                    case 'adminDashboard':
+                        content += renderAdminDashboard();
+                        break;
+                    case 'userDashboard':
+                        content += renderUserDashboard();
+                        break;
+                    case 'login':
+                    default:
+                        content += renderLoginView();
+                        break;
+                }
+                
+                // Prepend the message to the main content
+                if (appState.view !== 'login' && appState.view !== 'loading') {
+                    content = messageHtml + content;
+                }
+            }
+            
+            container.innerHTML = content;
+
+            // FIX: Scoped icon render for the main content
+            lucide.createIcons({ attr: 'data-lucide', element: container });
+        }
+        
+        // --- Initialization ---
+        
+        // Expose functions globally for inline HTML event handlers (e.g., onclick)
+        window.handleGoogleLogin = handleGoogleLogin;
+        window.handleAdminLogin = handleAdminLogin;
+        window.handleLogout = handleLogout;
+        window.handleCampSubmit = handleCampSubmit;
+        window.handleDeleteCamp = handleDeleteCamp;
+        window.handleBookSlot = handleBookSlot;
+        window.handleFeedbackSubmit = handleFeedbackSubmit;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.addDoctor = addDoctor;
+        window.removeDoctor = removeDoctor;
+        window.updateDoctorData = updateDoctorData;
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check for existing Firebase session to determine if a User *might* be logged in
+            if (window.onAuthStateChanged) {
+                 window.onAuthStateChanged(window.auth, (firebaseUser) => {
+                     // Only run this logic on initial load if we don't already have an active session (e.g. from Admin login)
+                     if (appState.user) return; 
+                    
+                     if (firebaseUser) {
+                         // User is authenticated via Firebase. Now try to exchange this for an API JWT.
+                         showMessage('Firebase user detected. Securing API session...', 'success');
+                         const userName = firebaseUser.displayName || firebaseUser.email.split('@')[0];
+                         // Call the API endpoint to get a server-signed JWT
+                         apiRequest('/auth/user/login', { 
+                             method: 'POST', 
+                             body: JSON.stringify({ 
+                                 uid: firebaseUser.uid,
+                                 userName: userName
+                             }),
+                             headers: { 'Content-Type': 'application/json', 'Authorization': '' } 
+                         }).then(apiData => {
+                             appState.user = {
+                                 userId: firebaseUser.uid,
+                                 name: userName,
+                                 email: firebaseUser.email,
+                                 role: 'user',
+                                 token: apiData.token 
+                             };
+                             appState.view = 'userDashboard';
+                             startPolling();
+                             showMessage('Welcome back! Session re-secured. Fetching data...', 'success');
+                         }).catch(error => {
+                             // If API call fails, log out of Firebase too to prevent infinite loop
+                             window.signOut(window.auth);
+                             appState.view = 'login';
+                             showMessage('Could not secure API session. Please log in again.', 'error');
+                         });
+                     } else {
+                         // No user logged in, show login screen
+                         appState.view = 'login';
+                     }
+                     renderApp();
+                 });
+            } else {
+                // Fallback if Firebase SDK failed to load
+                appState.view = 'login';
+                renderApp();
+            }
+        });
+
+    </script>
+    <!-- Note: Firebase Analytics SDK is included but not initialized with config for privacy. -->
+    <script type="module" src="https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js"></script>
+</body>
+</html>
