@@ -444,7 +444,16 @@
 
             } catch (error) {
                 console.error("Google Login Error:", error);
-                const msg = error.code === 'auth/popup-closed-by-user' ? 'Sign-in cancelled by user.' : error.message || 'Google Login failed.';
+                let msg;
+                if (error.code === 'auth/popup-closed-by-user') {
+                    msg = 'Sign-in cancelled by user.';
+                } else if (error.code === 'auth/network-request-failed') {
+                    // Specific network error warning
+                    msg = 'Firebase Network Error: Please check your connection or browser security settings (VPN, proxy).';
+                } else {
+                    msg = error.message || 'Google Login failed.';
+                }
+                
                 showMessage(msg, 'error');
                 if (window.auth.currentUser) await window.signOut(window.auth); 
                 return { success: false, error: error.message }; // Return status
@@ -890,7 +899,6 @@
             return `
                 <div class="mt-12 grid lg:grid-cols-3 gap-8">
                     
-                    <!-- Feedback Submission Form -->
                     <div class="lg:col-span-1">
                         <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
                             <i data-lucide="Star" class="w-6 h-6 mr-3 text-yellow-500 fill-yellow-500"></i> Share Your Feedback
@@ -920,7 +928,6 @@
                         </div>
                     </div>
 
-                    <!-- Public Feedback Display -->
                     <div class="lg:col-span-2">
                          <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
                             <i data-lucide="Users" class="w-6 h-6 mr-3 text-blue-600"></i> Public Feedback (${appState.allFeedback.length})
@@ -1532,7 +1539,6 @@
         });
 
     </script>
-    <!-- Note: Firebase Analytics SDK is included but not initialized with config for privacy. -->
     <script type="module" src="https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js"></script>
 </body>
 </html>
