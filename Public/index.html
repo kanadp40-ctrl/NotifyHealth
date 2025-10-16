@@ -117,9 +117,7 @@
 
     <script>
         // --- Configuration & Globals ---
-        // FIX: Changed from absolute URL to relative path for deployment compatibility
         const API_BASE_URL = '/api'; 
-        // FINAL ADMIN CREDENTIALS (Must match server.js)
         const ADMIN_USERNAME = 'admin@nh.com'; 
         const ADMIN_PASSWORD = 'SJCHS@123'; 
         const WHATSAPP_NUMBER = '8625085768';
@@ -291,6 +289,7 @@
 
         /**
          * Starts a polling mechanism to fetch camps periodically.
+         * NOTE: This function is now only called once by renderApp() when the dashboard view is active.
          */
         function startPolling() {
             if (campsIntervalId) clearInterval(campsIntervalId);
@@ -394,8 +393,9 @@
                     token: data.token 
                 };
                 appState.view = 'adminDashboard';
+                // Trigger full app render which will start polling
+                renderApp(); 
                 showMessage('Admin Login successful! Fetching data...', 'success');
-                startPolling(); // Use new polling function
                 return { success: true }; // Return status
             } catch (error) {
                 const errorMessage = error.message.includes('failed') || error.message.includes('refused')
@@ -437,8 +437,9 @@
                     token: apiData.token 
                 };
                 appState.view = 'userDashboard';
+                // Trigger full app render which will start polling
+                renderApp(); 
                 showMessage(`Welcome, ${appState.user.name}! Fetching data...`, 'success');
-                startPolling(); // Use new polling function
                 return { success: true }; // Return status
 
             } catch (error) {
@@ -1394,6 +1395,12 @@
 
             renderNavbar(); 
 
+            // FIX: Stop polling when logging out
+            if (appState.view === 'login' || appState.view === 'loading') {
+                if (campsIntervalId) clearInterval(campsIntervalId);
+                campsIntervalId = null;
+            }
+
             // FIX 3: Robustly control the alignment of the main content area.
             if (appState.view === 'login' || appState.view === 'loading') {
                 // For login/loading: center content vertically and horizontally
@@ -1405,6 +1412,11 @@
                 mainEl.classList.remove('items-center');
                 container.classList.remove('flex', 'flex-col', 'items-center', 'justify-center', 'min-h-[70vh]');
                 container.classList.add('p-8', 'sm:p-12'); // Add dashboard padding
+
+                // FIX: Start polling ONLY when the user lands on a dashboard for the first time or after refresh
+                if (!campsIntervalId) {
+                    startPolling();
+                }
             }
 
             if (appState.view === 'loading') {
@@ -1493,7 +1505,7 @@
                                  token: apiData.token 
                              };
                              appState.view = 'userDashboard';
-                             startPolling();
+                             // Call renderApp. Polling will start inside renderApp.
                              showMessage('Welcome back! Session re-secured. Fetching data...', 'success');
                          }).catch(error => {
                              // If API call fails, log out of Firebase too to prevent infinite loop
@@ -1502,17 +1514,14 @@
                              showMessage('Could not secure API session. Please log in again.', 'error');
                          }).finally(() => {
                             initialAuthCheckDone = true;
+                            renderApp();
                          });
 
                      } else {
                          // No user logged in, show login screen
                          appState.view = 'login';
                          initialAuthCheckDone = true;
-                     }
-                     
-                     // FIX 2: Only call renderApp once the auth check is definitively done and state is set to prevent flicker/race condition
-                     if (initialAuthCheckDone) {
-                        renderApp();
+                         renderApp();
                      }
                  });
             } else {
