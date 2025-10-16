@@ -32,7 +32,7 @@
             opacity: 1;
             z-index: -1;
             background-image: radial-gradient(#d1fae5 1px, transparent 1px),
-                              radial-gradient(#bfdbfe 1px, transparent 1px);
+                                 radial-gradient(#bfdbfe 1px, transparent 1px);
             background-size: 20px 20px;
         }
 
@@ -117,7 +117,8 @@
 
     <script>
         // --- Configuration & Globals ---
-        const API_BASE_URL = 'http://localhost:3000/api'; // Connects to server.js
+        // FIX: Changed from absolute URL to relative path for deployment compatibility
+        const API_BASE_URL = '/api'; 
         // FINAL ADMIN CREDENTIALS (Must match server.js)
         const ADMIN_USERNAME = 'admin@nh.com'; 
         const ADMIN_PASSWORD = 'SJCHS@123'; 
@@ -333,7 +334,7 @@
                 renderApp();
             } catch (error) {
                 console.error('Failed to fetch user bookings:', error);
-                showMessage('Could not load your bookings: ' + error.message, 'error');
+                // showMessage('Could not load your bookings: ' + error.message, 'error'); // Suppress for polling
             }
         }
         
@@ -348,7 +349,7 @@
                 renderApp();
             } catch (error) {
                 console.error('Failed to fetch admin bookings:', error);
-                showMessage('Could not load all patient bookings: ' + error.message, 'error');
+                // showMessage('Could not load all patient bookings: ' + error.message, 'error'); // Suppress for polling
             }
         }
 
@@ -365,7 +366,6 @@
                 renderApp();
             } catch (error) {
                 console.error('Failed to fetch feedback:', error);
-                // We won't show an error message here as it pollutes the UI, but we log it.
             }
         }
 
@@ -419,6 +419,7 @@
                 const firebaseUser = result.user;
                 const userName = firebaseUser.displayName || firebaseUser.email.split('@')[0];
                 
+                // Step 1: Get server-signed JWT using Firebase UID
                 const apiData = await apiRequest('/auth/user/login', { 
                     method: 'POST', 
                     body: JSON.stringify({ 
@@ -711,13 +712,13 @@
                                 <label for="admin-username" class="block text-sm font-medium text-gray-700">Username</label>
                                 <input type="text" id="admin-username" name="username" required 
                                     class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-inner focus:ring-emerald-500 focus:border-emerald-500" 
-                                    placeholder="${ADMIN_USERNAME}" value="${ADMIN_USERNAME}">
+                                    placeholder="${ADMIN_USERNAME}">
                             </div>
                             <div>
                                 <label for="admin-password" class="block text-sm font-medium text-gray-700">Password</label>
                                 <input type="password" id="admin-password" name="password" required 
                                     class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-inner focus:ring-emerald-500 focus:border-emerald-500" 
-                                    placeholder="SJCHS@123" value="${ADMIN_PASSWORD}">
+                                    placeholder="SJCHS@123">
                             </div>
                             <button type="submit" class="w-full flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl cta-button mt-6">
                                 <i data-lucide="LogIn" class="w-5 h-5 mr-2"></i> Admin Sign In
@@ -804,8 +805,8 @@
                     </div>
                     
                     <a href="${camp.mapUrl}" target="_blank" class="text-sm font-semibold text-blue-600 hover:text-blue-800 flex items-center transition duration-200 mt-4">
-                                Get Directions <i data-lucide="ExternalLink" class="w-4 h-4 ml-1"></i>
-                        </a>
+                                 Get Directions <i data-lucide="ExternalLink" class="w-4 h-4 ml-1"></i>
+                         </a>
                     
                     ${bookingButton}
 
@@ -824,7 +825,7 @@
                         <td class="p-4"><span class="booking-badge">${b.bookingNumber}</span></td>
                         <td class="p-4 text-sm">${new Date(b.bookedAt).toLocaleDateString()}</td>
                     </tr>
-                `).join('')
+                  `).join('')
                 : `
                     <tr>
                         <td colspan="3" class="p-8 text-center text-gray-500">
@@ -832,7 +833,7 @@
                             You haven't booked any slots yet. Book one from the list above!
                         </td>
                     </tr>
-                `;
+                  `;
 
             return `
                 <div class="mt-12">
@@ -877,13 +878,13 @@
                         </div>
                         <p class="text-sm text-gray-700 italic">"${f.comment}"</p>
                     </div>
-                `).join('')
+                  `).join('')
                 : `
                     <div class="text-center p-8 bg-white/70 rounded-xl border border-dashed border-gray-300">
                         <i data-lucide="MessageSquare" class="w-8 h-8 mx-auto text-gray-400 mb-2"></i>
                         <p class="text-gray-500">No public feedback yet. Be the first to share your experience!</p>
                     </div>
-                `;
+                  `;
 
             return `
                 <div class="mt-12 grid lg:grid-cols-3 gap-8">
@@ -923,7 +924,7 @@
                          <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
                             <i data-lucide="Users" class="w-6 h-6 mr-3 text-blue-600"></i> Public Feedback (${appState.allFeedback.length})
                         </h3>
-                        <div class="space-y-4">
+                        <div class="space-y-4 max-h-96 overflow-y-auto">
                             ${feedbackList}
                         </div>
                     </div>
@@ -961,7 +962,7 @@
                 <div class="bg-blue-100 p-4 rounded-lg border-l-4 border-blue-500 mb-8 text-sm text-blue-800 shadow-md">
                     <p class="font-medium flex items-center">
                         <i data-lucide="Info" class="w-4 h-4 mr-2 flex-shrink-0"></i>
-                        Your session is secure via JWT. Data is updated every 10 seconds. Click on a card to view doctors!
+                        Your session is secure via JWT. Data is updated every 10 seconds. Click on a camp card to view doctors!
                     </p>
                 </div>
                 
@@ -991,7 +992,7 @@
                         <td class="p-4"><span class="booking-badge !bg-red-100 !text-red-700">${b.bookingNumber}</span></td>
                         <td class="p-4 text-sm">${new Date(b.bookedAt).toLocaleDateString()}</td>
                     </tr>
-                `).join('')
+                  `).join('')
                 : `
                     <tr>
                         <td colspan="5" class="p-8 text-center text-gray-500">
@@ -999,7 +1000,7 @@
                             No patient slots have been booked yet.
                         </td>
                     </tr>
-                `;
+                  `;
 
             return `
                 <div class="mt-12">
@@ -1063,7 +1064,7 @@
                             No camps have been added yet. Click 'Add New Camp' to begin.
                         </td>
                     </tr>
-                `;
+                  `;
 
             return `
                 <div class="flex justify-between items-center mb-6">
