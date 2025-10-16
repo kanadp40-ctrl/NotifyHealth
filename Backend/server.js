@@ -66,7 +66,10 @@ async function connectToMongo() {
                 version: ServerApiVersion.v1,
                 strict: true,
                 deprecationErrors: true,
-            }
+            },
+            // OPTIMIZATION FOR SERVERLESS COLD START
+            serverSelectionTimeoutMS: 5000, // Wait max 5s for server discovery
+            connectTimeoutMS: 10000,       // Max 10s for connection establishment
         });
         await client.connect();
         dbClient = client;
