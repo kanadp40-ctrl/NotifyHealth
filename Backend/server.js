@@ -68,7 +68,7 @@ async function connectToMongo() {
                 deprecationErrors: true,
             },
             // OPTIMIZED CONNECTION SETTINGS FOR SERVERLESS:
-            tls: true, // Explicitly enables TLS/SSL, which is required
+            tls: true, // Explicitly enables TLS/SSL, required to fix SSL_alert_number 80
             serverSelectionTimeoutMS: 5000, // Wait max 5s for server discovery
             connectTimeoutMS: 10000,       // Max 10s for connection establishment
         });
@@ -151,7 +151,6 @@ app.post('/api/auth/admin/login', async (req, res) => {
     const { username, password } = req.body;
     
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        // FIX: Added 'name: "Admin"' to the payload for consistent JWT structure
         const token = jwt.sign({ userId: ADMIN_USERNAME, role: 'admin', name: 'Admin' }, JWT_SECRET, { expiresIn: '1h' });
         return res.json({ success: true, token, role: 'admin', name: 'Admin' });
     }
