@@ -1459,13 +1459,18 @@
         window.removeDoctor = removeDoctor;
         window.updateDoctorData = updateDoctorData;
 
+        // Variable to track if the initial auth check has been performed
+        let initialAuthCheckDone = false;
 
         document.addEventListener('DOMContentLoaded', () => {
             // Check for existing Firebase session to determine if a User *might* be logged in
             if (window.onAuthStateChanged) {
                  window.onAuthStateChanged(window.auth, (firebaseUser) => {
                      // Only run this logic on initial load if we don't already have an active session (e.g. from Admin login)
-                     if (appState.user) return; 
+                     if (appState.user && appState.user.role === 'admin') {
+                        initialAuthCheckDone = true; // Skip if already manually logged in as admin
+                        return;
+                     } 
                     
                      if (firebaseUser) {
                          // User is authenticated via Firebase. Now try to exchange this for an API JWT.
@@ -1495,12 +1500,20 @@
                              window.signOut(window.auth);
                              appState.view = 'login';
                              showMessage('Could not secure API session. Please log in again.', 'error');
+                         }).finally(() => {
+                            initialAuthCheckDone = true;
                          });
+
                      } else {
                          // No user logged in, show login screen
                          appState.view = 'login';
+                         initialAuthCheckDone = true;
                      }
-                     renderApp();
+                     
+                     // FIX 2: Only call renderApp once the auth check is definitively done and state is set to prevent flicker/race condition
+                     if (initialAuthCheckDone) {
+                        renderApp();
+                     }
                  });
             } else {
                 // Fallback if Firebase SDK failed to load
