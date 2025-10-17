@@ -447,9 +447,9 @@
                 let msg;
                 if (error.code === 'auth/popup-closed-by-user') {
                     msg = 'Sign-in cancelled by user.';
-                } else if (error.code === 'auth/network-request-failed') {
+                } else if (error.code === 'auth/network-request-failed' || error.message.includes('failed to fetch')) {
                     // Specific network error warning
-                    msg = 'Firebase Network Error: Please check your connection or browser security settings (VPN, proxy).';
+                    msg = 'Network Error: The login server is unreachable. Check connection or browser security settings.';
                 } else {
                     msg = error.message || 'Google Login failed.';
                 }
@@ -686,6 +686,19 @@
         }
 
         /**
+         * Converts a numerical rating to star icons.
+         */
+        function renderRatingStars(rating) {
+            const fullStar = '<i data-lucide="Star" class="w-4 h-4 fill-yellow-400 text-yellow-400"></i>';
+            const emptyStar = '<i data-lucide="Star" class="w-4 h-4 text-gray-300"></i>';
+            let stars = '';
+            for (let i = 1; i <= 5; i++) {
+                stars += (i <= rating) ? fullStar : emptyStar;
+            }
+            return stars;
+        }
+
+        /**
          * Renders the Login View (Admin and User).
          */
         function renderLoginView() {
@@ -899,6 +912,7 @@
             return `
                 <div class="mt-12 grid lg:grid-cols-3 gap-8">
                     
+                    <!-- Feedback Submission Form -->
                     <div class="lg:col-span-1">
                         <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
                             <i data-lucide="Star" class="w-6 h-6 mr-3 text-yellow-500 fill-yellow-500"></i> Share Your Feedback
@@ -928,6 +942,7 @@
                         </div>
                     </div>
 
+                    <!-- Public Feedback Display -->
                     <div class="lg:col-span-2">
                          <h3 class="text-3xl font-extrabold text-gray-800 mb-6 flex items-center">
                             <i data-lucide="Users" class="w-6 h-6 mr-3 text-blue-600"></i> Public Feedback (${appState.allFeedback.length})
@@ -1290,11 +1305,7 @@
         function renderConfirmModal() {
             const { confirmMessage, confirmButtonText, confirmAction } = appState.modal;
             
-            const handleConfirm = () => {
-                closeModal();
-                if (confirmAction) confirmAction();
-            };
-
+            // FIX: Use the global handleConfirm method reference
             return `
                 <div class="flex justify-between items-center pb-4 border-b">
                     <h3 class="text-2xl font-bold text-gray-800 flex items-center">
@@ -1313,7 +1324,7 @@
                     <button onclick="closeModal()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-4 rounded-xl transition duration-200">
                         Cancel
                     </button>
-                    <button onclick="handleConfirm()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl cta-button">
+                    <button onclick="appState.modal.confirmAction(); closeModal();" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl cta-button">
                         <i data-lucide="Check" class="w-5 h-5 mr-2"></i> ${confirmButtonText}
                     </button>
                 </div>
